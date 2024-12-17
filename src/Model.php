@@ -1,8 +1,8 @@
 <?php
 
-namespace Ancalagon\Model\Core;
+namespace Ancalagon\Glaurlink;
 
-use Ancalagon\Model\Exception;
+use Ancalagon\Glaurlink\Exception;
 use JsonSerializable;
 use mysqli;
 use ReflectionClass;
