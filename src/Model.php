@@ -126,10 +126,16 @@ abstract class Model implements JsonSerializable
                 break;
             case "ReflectionUnionType":
                 $typeArr = $type->getTypes();
-                error_log(var_export($typeArr, true));
-                die();
+                foreach ($typeArr as $subType) {
+                    $val = $this->validateType($value, $subType);
+                    if($val===true){
+                        return true;
+                    }
+                }
+                return false;
                 break;
             case "ReflectionIntersectionType":
+                throw new TypeError("Intersection Type ($class) should not be used to implement a column (yet)");
                 break;
             default:
                 throw new TypeError("Unsupported Reflection Type ($class)");
