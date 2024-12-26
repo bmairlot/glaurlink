@@ -63,7 +63,7 @@ abstract class Model implements JsonSerializable
     /**
      * @throws Exception
      */
-    protected function fill(array $attributes): void
+    public function fill(array $attributes): void
     {
         foreach ($attributes as $key => $value) {
             // Only fill if it's a defined property or in fillable array
