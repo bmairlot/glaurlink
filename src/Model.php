@@ -90,9 +90,9 @@ abstract class Model implements JsonSerializable
                     throw new TypeError("Cannot assign " . gettype($value) . " to property $key of type " . $type->getName());
                 }
             }
+
             $this->$key = $value;
-        }
-        else{
+        } else {
             throw new Exception("Property $key does not exist in " . gettype($this));
         }
 
@@ -103,25 +103,40 @@ abstract class Model implements JsonSerializable
         if ($value === null) {
             return $type->allowsNull();
         }
-
-        $typeName = $type->getName();
-        switch ($typeName) {
-            case 'int':
-                return is_int($value) || (is_string($value) && ctype_digit($value));
-            case 'float':
-                return is_float($value) || is_int($value) || (is_string($value) && is_numeric($value));
-            case 'string':
-                return is_string($value);
-            case 'bool':
-                return is_bool($value);
-            case 'array':
-                return is_array($value);
+        $class = get_class($type);
+        switch ($class) {
+            case "ReflectionNamedType":
+                $typeName = $type->getName();
+                switch ($typeName) {
+                    case 'int':
+                        return is_int($value) || (is_string($value) && ctype_digit($value));
+                    case 'float':
+                        return is_float($value) || is_int($value) || (is_string($value) && is_numeric($value));
+                    case 'string':
+                        return is_string($value);
+                    case 'bool':
+                        return is_bool($value);
+                    case 'array':
+                        return is_array($value);
+                    case 'union':
+                        error_log("Found union type");
+                    default:
+                        return $value instanceof $typeName;
+                }
+                break;
+            case "ReflectionUnionType":
+                $typeArr = $type->getTypes();
+                error_log(var_export($typeArr, true));
+                die();
+                break;
+            case "ReflectionIntersectionType":
+                break;
             default:
-                return $value instanceof $typeName;
+                throw new TypeError("Unsupported Reflection Type ($class)");
         }
+
+
     }
-
-
 
 
     public function __get(string $name)
@@ -146,7 +161,7 @@ abstract class Model implements JsonSerializable
     public static function find(?mysqli $dbh, array $attributes): ?static
     {
 
-        if(is_null($dbh)){
+        if (is_null($dbh)) {
             throw new Exception("Database handler cannot be null");
         }
         // Build WHERE clause
@@ -203,7 +218,8 @@ abstract class Model implements JsonSerializable
     /**
      * @throws Exception
      */
-    public function save(mysqli $dbh):bool{
+    public function save(mysqli $dbh): bool
+    {
         // We want to get properties of only the _Object class and not the effective one
         $reflection = (new ReflectionClass($this))->getParentClass();
         $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
@@ -212,14 +228,14 @@ abstract class Model implements JsonSerializable
         $values = [];
         $updates = [];
         $params = [];
-        $types='';
+        $types = '';
 
         foreach ($properties as $prop) {
 
             $name = $prop->getName();
             $value = $prop->getValue($this);
 
-            error_log("Name->value : $name -> $value".PHP_EOL);
+            error_log("Name->value : $name -> $value" . PHP_EOL);
 
             /*// Skip id for insert, but include for update
             if ($name === 'id' && $value === null) {
@@ -247,14 +263,14 @@ abstract class Model implements JsonSerializable
             } else {
                 $types .= 's';
             }
-            error_log("Types : $types".PHP_EOL);
+            error_log("Types : $types" . PHP_EOL);
         }
         // Determine if this is an insert or update operation
         if ($this->id === null) {
             // INSERT operation
 //            $sql = "INSERT INTO " . static::$table . " (" . implode(', ', $fields) . ")
-  //                 VALUES (" . implode(', ', $values) . ")";
-            $sql="INSERT INTO " . static::$table." SET " . implode(', ', $updates);
+            //                 VALUES (" . implode(', ', $values) . ")";
+            $sql = "INSERT INTO " . static::$table . " SET " . implode(', ', $updates);
         } else {
             // UPDATE operation
             // Remove id from the updates array
@@ -373,7 +389,7 @@ abstract class Model implements JsonSerializable
      */
     public function jsonSerialize(): array
     {
-        foreach (array_keys($this->attributes) as $attribute){
+        foreach (array_keys($this->attributes) as $attribute) {
             $this->attributes[$attribute] = $this->$attribute;
         };
         return $this->attributes;
