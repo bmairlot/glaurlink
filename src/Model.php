@@ -29,6 +29,18 @@ abstract class Model implements JsonSerializable
         $this->fill($attributes);
     }
 
+
+    /**
+     * @throws Exception
+     */
+    public static function create(array $attributes = []): static
+    {
+        $instance = new static();
+        $instance->fill($attributes);
+        return $instance;
+    }
+
+
     /**
      * Initialize class properties based on reflection
      */
@@ -130,7 +142,7 @@ abstract class Model implements JsonSerializable
                 $typeArr = $type->getTypes();
                 foreach ($typeArr as $subType) {
                     $val = $this->validateType($value, $subType);
-                    if($val===true){
+                    if ($val === true) {
                         return true;
                     }
                 }
@@ -160,7 +172,7 @@ abstract class Model implements JsonSerializable
         // Handle named types
         if ($type instanceof ReflectionNamedType) {
             $typeName = $type->getName();
-            return match($typeName) {
+            return match ($typeName) {
                 'bool', 'int' => (int)$value,
                 'float' => (float)$value,
                 'string' => (string)$value,
