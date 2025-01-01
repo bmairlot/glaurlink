@@ -5,8 +5,10 @@ namespace Ancalagon\Glaurlink;
 use JsonSerializable;
 use mysqli;
 use ReflectionClass;
+use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionType;
+use ReflectionUnionType;
 use RuntimeException;
 use TypeError;
 
@@ -115,7 +117,7 @@ abstract class Model implements JsonSerializable
                     case 'string':
                         return is_string($value);
                     case 'bool':
-                        return is_bool($value);
+                        return is_bool($value) || $value === 0 || $value === 1 || $value === '0' || $value === '1';
                     case 'array':
                         return is_array($value);
                     case 'union':
@@ -144,6 +146,39 @@ abstract class Model implements JsonSerializable
 
     }
 
+    protected function prepareValueForDatabase($value, ReflectionProperty $property): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $type = $property->getType();
+        if (!$type) {
+            return $value;
+        }
+
+        // Handle named types
+        if ($type instanceof ReflectionNamedType) {
+            $typeName = $type->getName();
+            return match($typeName) {
+                'bool', 'int' => (int)$value,
+                'float' => (float)$value,
+                'string' => (string)$value,
+                default => $value
+            };
+        }
+
+        // Handle union types
+        if ($type instanceof ReflectionUnionType) {
+            foreach ($type->getTypes() as $subType) {
+                if ($this->validateType($value, $subType)) {
+                    return $this->prepareValueForDatabase($value, $property);
+                }
+            }
+        }
+
+        return $value;
+    }
 
     public function __get(string $name)
     {
@@ -227,7 +262,7 @@ abstract class Model implements JsonSerializable
     public function save(mysqli $dbh): bool
     {
         // We want to get properties of only the _Object class and not the effective one
-        $reflection = (new ReflectionClass($this))->getParentClass();
+        $reflection = new ReflectionClass($this)->getParentClass();
         $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
 
         $fields = [];
@@ -240,21 +275,8 @@ abstract class Model implements JsonSerializable
 
             $name = $prop->getName();
             $value = $prop->getValue($this);
+            $value = $this->prepareValueForDatabase($value, $prop);
 
-            error_log("Name->value : $name -> $value" . PHP_EOL);
-
-            /*// Skip id for insert, but include for update
-            if ($name === 'id' && $value === null) {
-                continue;
-            }*/
-
-            // Handle created_at and updated_at
-            /*if ($name === 'created_at' && $value === null) {
-                $value = $now;
-            }
-            if ($name === 'updated_at') {
-                $value = $now;
-            }*/
 
             $fields[] = $name;
             $values[] = '?';
@@ -262,7 +284,7 @@ abstract class Model implements JsonSerializable
             $params[] = $value;
 
             // Determine parameter type for bind_param
-            if (is_int($value) || $name === 'id') {
+            if (is_int($value) || $name === 'id' || $prop->getType()?->getName() === 'bool') {
                 $types .= 'i';
             } elseif (is_double($value)) {
                 $types .= 'd';
