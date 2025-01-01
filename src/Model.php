@@ -158,13 +158,12 @@ abstract class Model implements JsonSerializable
 
     }
 
-    protected function prepareValueForDatabase($value, ReflectionProperty $property): mixed
+    protected function prepareValueForDatabase($value, ReflectionType $type): mixed
     {
         if ($value === null) {
             return null;
         }
 
-        $type = $property->getType();
         if (!$type) {
             return $value;
         }
@@ -184,7 +183,7 @@ abstract class Model implements JsonSerializable
         if ($type instanceof ReflectionUnionType) {
             foreach ($type->getTypes() as $subType) {
                 if ($this->validateType($value, $subType)) {
-                    return $this->prepareValueForDatabase($value, $property);
+                    return $this->prepareValueForDatabase($value, $subType);
                 }
             }
         }
@@ -287,7 +286,7 @@ abstract class Model implements JsonSerializable
 
             $name = $prop->getName();
             $value = $prop->getValue($this);
-            $value = $this->prepareValueForDatabase($value, $prop);
+            $value = $this->prepareValueForDatabase($value, $prop->getType());
 
 
             $fields[] = $name;
