@@ -267,6 +267,129 @@ abstract class Model implements JsonSerializable
         return null;
     }
 
+
+    /**
+     * Fetch all records from the table and returns an array of object
+     * @param mysqli $dbh Database connection
+     * @param array $conditions Optional WHERE conditions
+     * @param array $orderBy Optional ORDER BY conditions
+     * @param ?int $limit Optional LIMIT
+     * @param ?int $offset Optional OFFSET
+     * @return static[] Array of model instances
+     * @throws Exception
+     */
+    public static function collection(
+        mysqli $dbh,
+        array $conditions = [],
+        array $orderBy = [],
+        ?int $limit = null,
+        ?int $offset = null
+    ): array {
+        $query = "SELECT * FROM " . static::$table;
+        $params = [];
+        $types = '';
+
+        // Add WHERE clause if conditions exist
+        if (!empty($conditions)) {
+            $whereClause = [];
+            foreach ($conditions as $column => $value) {
+                if ($value === null) {
+                    $whereClause[] = "`$column` IS NULL";
+                } else {
+                    $whereClause[] = "`$column` = ?";
+                    $params[] = $value;
+                    $types .= is_int($value) ? 'i' : (is_float($value) ? 'd' : 's');
+                }
+            }
+            $query .= " WHERE " . implode(' AND ', $whereClause);
+        }
+
+        // Add ORDER BY if specified
+        if (!empty($orderBy)) {
+            $orderClauses = [];
+            foreach ($orderBy as $column => $direction) {
+                $direction = strtoupper($direction) === 'DESC' ? 'DESC' : 'ASC';
+                $orderClauses[] = "`$column` $direction";
+            }
+            $query .= " ORDER BY " . implode(', ', $orderClauses);
+        }
+
+        // Add LIMIT and OFFSET if specified
+        if ($limit !== null) {
+            $query .= " LIMIT ?";
+            $params[] = $limit;
+            $types .= 'i';
+
+            if ($offset !== null) {
+                $query .= " OFFSET ?";
+                $params[] = $offset;
+                $types .= 'i';
+            }
+        }
+
+        $stmt = $dbh->prepare($query);
+        if ($stmt === false) {
+            throw new Exception("Failed to prepare statement: " . $dbh->error);
+        }
+
+        // Bind parameters if we have any
+        if (!empty($params)) {
+            $stmt->bind_param($types, ...$params);
+        }
+
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        $records = [];
+        while ($row = $result->fetch_assoc()) {
+            $records[] = new static($row);
+        }
+
+        return $records;
+    }
+
+    /**
+     * Count records based on conditions
+     * @param mysqli $dbh Database connection
+     * @param array $conditions Optional WHERE conditions
+     * @return int Number of matching records
+     * @throws Exception
+     */
+    public static function count(mysqli $dbh, array $conditions = []): int {
+        $query = "SELECT COUNT(*) as count FROM " . static::$table;
+        $params = [];
+        $types = '';
+
+        if (!empty($conditions)) {
+            $whereClause = [];
+            foreach ($conditions as $column => $value) {
+                if ($value === null) {
+                    $whereClause[] = "`$column` IS NULL";
+                } else {
+                    $whereClause[] = "`$column` = ?";
+                    $params[] = $value;
+                    $types .= is_int($value) ? 'i' : (is_float($value) ? 'd' : 's');
+                }
+            }
+            $query .= " WHERE " . implode(' AND ', $whereClause);
+        }
+
+        $stmt = $dbh->prepare($query);
+        if ($stmt === false) {
+            throw new Exception("Failed to prepare statement: " . $dbh->error);
+        }
+
+        if (!empty($params)) {
+            $stmt->bind_param($types, ...$params);
+        }
+
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+
+        return (int) $row['count'];
+    }
+
     /**
      * @throws Exception
      */
