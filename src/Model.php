@@ -1,5 +1,8 @@
 <?php
-
+/**
+ * @copyright Copyright (c) 2024 Bruno Mairlot
+ * @license MIT
+ */
 namespace Ancalagon\Glaurlink;
 
 use JsonSerializable;
