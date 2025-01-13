@@ -19,8 +19,7 @@ abstract class Model implements JsonSerializable
 {
     protected static string $table;
     protected static array $fillable = [];
-    protected array $attributes = [];
-
+    protected  static array $attributes = [];
 
     /**
      * @throws Exception
@@ -65,7 +64,7 @@ abstract class Model implements JsonSerializable
             $defaultValue = $property->hasDefaultValue() ? $property->getDefaultValue() : null;
 
             // Initialize the property in attributes
-            $this->attributes[$name] = $defaultValue;
+            static::$attributes[$name] = $defaultValue;
 
             // If the property has a type, we can enforce it
             if ($property->hasType()) {
@@ -84,9 +83,8 @@ abstract class Model implements JsonSerializable
     {
         foreach ($attributes as $key => $value) {
             // Only fill if it's a defined property or in fillable array
-            if (array_key_exists($key, $this->attributes) || in_array($key, static::$fillable)) {
+            if (array_key_exists($key, static::$attributes) || in_array($key, static::$fillable)) {
                 $this->setAttribute($key, $value);
-
             }
         }
     }
@@ -196,7 +194,7 @@ abstract class Model implements JsonSerializable
 
     public function __get(string $name)
     {
-        return $this->attributes[$name] ?? null;
+        return static::$attributes[$name] ?? null;
     }
 
     /**
@@ -554,10 +552,11 @@ abstract class Model implements JsonSerializable
      */
     public function jsonSerialize(): array
     {
-        foreach (array_keys($this->attributes) as $attribute) {
-            $this->attributes[$attribute] = $this->$attribute;
+        $attribute=[];
+        foreach (array_keys(static::$attributes) as $attribute) {
+            $attributes[$attribute] = $this->$attribute;
         };
-        return $this->attributes;
+        return $attributes;
     }
 
 
