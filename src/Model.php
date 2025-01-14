@@ -276,10 +276,11 @@ abstract class Model implements JsonSerializable
      * @param array $orderBy Optional ORDER BY conditions
      * @param ?int $limit Optional LIMIT
      * @param ?int $offset Optional OFFSET
-     * @return static[] Array of model instances
+     * @return array<int, static> Array of model instances
      * @throws Exception
+     * @internal This method is meant to be called by child classes only
      */
-    public static function collection(
+    protected static function collection(
         mysqli $dbh,
         array $conditions = [],
         array $orderBy = [],
