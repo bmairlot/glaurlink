@@ -286,7 +286,7 @@ abstract class Model implements JsonSerializable
         array $orderBy = [],
         ?int $limit = null,
         ?int $offset = null
-    ): array {
+    ): Collection {
         $query = "SELECT * FROM " . static::$table;
         $params = [];
         $types = '';
@@ -347,7 +347,7 @@ abstract class Model implements JsonSerializable
             $records[] = new static($row);
         }
 
-        return $records;
+        return new Collection($records);
     }
 
     /**

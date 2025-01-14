@@ -10,7 +10,8 @@
   },
   "autoload-dev": {
     "psr-4": {
-      "Ancalagon\\Glaurlink\\Tests\\": "tests/"
+      "Ancalagon\\Glaurlink\\Tests\\": "tests/",
+      "Ancalagon\\Glaurlink\\": "src/"
     }
   },
   "authors": [
