@@ -14,7 +14,7 @@ use JsonSerializable;
  */
 class Collection implements Iterator, ArrayAccess, Countable, JsonSerializable
 {
-    private int $position = 0;
+    private int $position;
 
     /**
      * @param array<int, T> $items

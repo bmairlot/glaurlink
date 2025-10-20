@@ -243,10 +243,10 @@ abstract class Model implements JsonSerializable
 
         // Bind parameters if we have any
         if (!empty($values)) {
-            // Create types string for bind_param
+            // Create a type string for bind_param
             $types = str_repeat('s', count($values)); // Default all to string
 
-            // Determine proper type for each value
+            // Determine the proper type for each value
             foreach ($values as $value) {
                 if (is_int($value)) {
                     $types = 'i';
@@ -276,11 +276,11 @@ abstract class Model implements JsonSerializable
      * @param array $orderBy Optional ORDER BY conditions
      * @param ?int $limit Optional LIMIT
      * @param ?int $offset Optional OFFSET
-     * @return array<int, static> Array of model instances
+     * @return Collection Array of model instances
      * @throws Exception
      * @internal This method is meant to be called by child classes only
      */
-    protected static function collection(
+    public static function collection(
         mysqli $dbh,
         array $conditions = [],
         array $orderBy = [],
@@ -291,7 +291,7 @@ abstract class Model implements JsonSerializable
         $params = [];
         $types = '';
 
-        // Add WHERE clause if conditions exist
+        // Add a WHERE clause if conditions exist
         if (!empty($conditions)) {
             $whereClause = [];
             foreach ($conditions as $column => $value) {
