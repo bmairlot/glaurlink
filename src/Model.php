@@ -282,6 +282,8 @@ abstract class Model implements JsonSerializable
      */
     public static function collection(
         mysqli $dbh,
+        ?string $searchTerm=null,
+        array $searchColumns=[],
         array $conditions = [],
         array $orderBy = [],
         ?int $limit = null,
@@ -290,20 +292,33 @@ abstract class Model implements JsonSerializable
         $query = "SELECT * FROM " . static::$table;
         $params = [];
         $types = '';
+        $whereParts = [];
 
-        // Add a WHERE clause if conditions exist
+        // Add exact match conditions (AND)
         if (!empty($conditions)) {
-            $whereClause = [];
+            $andClause = [];
             foreach ($conditions as $column => $value) {
-                if ($value === null) {
-                    $whereClause[] = "`$column` IS NULL";
-                } else {
-                    $whereClause[] = "`$column` = ?";
-                    $params[] = $value;
-                    $types .= is_int($value) ? 'i' : (is_float($value) ? 'd' : 's');
-                }
+                $andClause[] = "`$column` = ?";
+                $params[] = $value;
+                $types .= is_int($value) ? 'i' : (is_float($value) ? 'd' : 's');
             }
-            $query .= " WHERE " . implode(' AND ', $whereClause);
+            $whereParts[] = implode(' AND ', $andClause);
+        }
+
+        // Add search across multiple columns (OR with LIKE)
+        if (!empty($searchTerm) && !empty($searchColumns)) {
+            $searchClause = [];
+            $searchValue = "%$searchTerm%";
+            foreach ($searchColumns as $column) {
+                $searchClause[] = "`$column` LIKE ?";
+                $params[] = $searchValue;
+                $types .= 's';
+            }
+            $whereParts[] = '(' . implode(' OR ', $searchClause) . ')';
+        }
+
+        if (!empty($whereParts)) {
+            $query .= " WHERE " . implode(' AND ', $whereParts);
         }
 
         // Add ORDER BY if specified
@@ -553,7 +568,7 @@ abstract class Model implements JsonSerializable
      */
     public function jsonSerialize(): array
     {
-        $attribute=[];
+        $attributes=[];
         foreach (array_keys(static::$attributes) as $attribute) {
             $attributes[$attribute] = $this->$attribute;
         };
