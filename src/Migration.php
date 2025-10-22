@@ -3,6 +3,7 @@
 namespace Ancalagon\Glaurlink;
 
 use mysqli;
+use Throwable;
 
 /**
  * Lightweight file-based migrations for Glaurlink using mysqli.
@@ -37,9 +38,10 @@ class Migration
      * @param mysqli $dbh Active mysqli connection
      * @param string|null $migrationsPath Optional base path to migrations directory
      * @param bool $moveApplied If true, move files to an "applied" subdirectory after applying
+     * @param bool $verbose If true, print status messages to stdout
      * @throws Exception
      */
-    public static function migrate(mysqli $dbh, ?string $migrationsPath = null, bool $moveApplied = false): void
+    public static function migrate(mysqli $dbh, ?string $migrationsPath = null, bool $moveApplied = true,bool $verbose = true): void
     {
         self::ensureTable($dbh);
         $dir = self::resolveMigrationsPath($migrationsPath);
@@ -81,6 +83,9 @@ class Migration
 
             if ($moveApplied) {
                 self::moveToAppliedDir($file, $dir);
+            }
+            if($verbose){
+                echo "Applied migration successfully: $name\n";
             }
         }
     }
@@ -320,8 +325,11 @@ class Migration
     }
 
     /**
+     * @param mysqli $dbh
      * @param array<int,string> $statements
+     * @return void
      * @throws Exception
+     * @throws Throwable
      */
     private static function executeStatementsInTransaction(mysqli $dbh, array $statements): void
     {
@@ -337,8 +345,12 @@ class Migration
             }
             if (!$dbh->commit()) {
                 throw new Exception("Failed to commit transaction: " . $dbh->error);
+            }else {
+                if ($verbose) {
+
+                }
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $dbh->rollback();
             throw $e instanceof Exception ? $e : new Exception($e->getMessage(), previous: $e);
         }
