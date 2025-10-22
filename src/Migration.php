@@ -346,10 +346,6 @@ class Migration
             }
             if (!$dbh->commit()) {
                 throw new Exception("Failed to commit transaction: " . $dbh->error);
-            }else {
-                if ($verbose) {
-
-                }
             }
         } catch (Throwable $e) {
             $dbh->rollback();
