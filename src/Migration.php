@@ -220,7 +220,7 @@ class Migration
         if ($override !== null && $override !== '') {
             return rtrim(self::toAbsolutePath($override), DIRECTORY_SEPARATOR);
         }
-        $root = getcwd() ?: '.';
+        $root = dirname( __FILE__,5);
         $composerFile = $root . DIRECTORY_SEPARATOR . 'composer.json';
         $path = null;
         if (is_file($composerFile)) {
