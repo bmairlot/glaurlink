@@ -215,7 +215,7 @@ class Migration
         return (int)$row['b'];
     }
 
-    public static function resolveMigrationsPath(?string $override): string
+    public static function resolveMigrationsPath(?string $override=null): string
     {
         if ($override !== null && $override !== '') {
             return rtrim(self::toAbsolutePath($override), DIRECTORY_SEPARATOR);
