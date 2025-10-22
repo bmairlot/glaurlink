@@ -40,6 +40,7 @@ class Migration
      * @param bool $moveApplied If true, move files to an "applied" subdirectory after applying
      * @param bool $verbose If true, print status messages to stdout
      * @throws Exception
+     * @throws Throwable
      */
     public static function migrate(mysqli $dbh, ?string $migrationsPath = null, bool $moveApplied = true,bool $verbose = true): void
     {
