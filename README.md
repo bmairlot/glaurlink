@@ -91,3 +91,87 @@ For open source projects, say how it is licensed.
 
 ## Project status
 If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+
+---
+
+# Database Migrations (Glaurlink)
+
+Glaurlink provides a lightweight migration mechanism with zero external dependencies, based on plain SQL statements executed through mysqli.
+
+- Tracks applied migrations in a dedicated table: `glaurlink_migrations`.
+- Applies new migrations from a directory in your application (not in this library).
+- Supports rollback by batches.
+- Optionally moves applied files to an `applied/` subdirectory.
+
+## Location of migration files
+
+By default, migrations are loaded from `database/migrations` relative to your project's root (current working directory).
+
+You can override the path via your application's composer.json:
+
+```json
+{
+  "extra": {
+    "glaurlink": {
+      "migrations_path": "database/migrations"
+    }
+  }
+}
+```
+
+You may also pass an explicit path to the API methods.
+
+## Migration file format
+
+Each migration is a PHP file returning an array with `up` and `down` keys. Each key can be a string (single SQL statement) or an array of SQL statements. Files are applied in lexicographical order by filename, so prefix them with a timestamp.
+
+Example file: `database/migrations/20251022112900_create_users_table.php`
+
+```php
+<?php
+return [
+    'up' => [
+        "CREATE TABLE users (\n" .
+        "  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,\n" .
+        "  name VARCHAR(255) NOT NULL,\n" .
+        "  email VARCHAR(255) NULL,\n" .
+        "  is_active TINYINT(1) NOT NULL DEFAULT 0\n" .
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+        "ALTER TABLE users ADD INDEX idx_users_email (email);",
+    ],
+    'down' => [
+        "DROP TABLE IF EXISTS users;",
+    ],
+];
+```
+
+## Using the Migration API
+
+```php
+use Ancalagon\Glaurlink\Migration;
+use mysqli;
+
+$dbh = new mysqli('localhost', 'user', 'password', 'database');
+
+// Apply all pending migrations (from default or configured path)
+Migration::migrate($dbh);
+
+// Apply from a specific directory, and move files to applied/
+Migration::migrate($dbh, __DIR__ . '/database/migrations', moveApplied: true);
+
+// Roll back the last batch (the set applied by the most recent migrate call)
+Migration::rollback($dbh);
+
+// Roll back the last two batches, moving files back from applied/
+Migration::rollback($dbh, steps: 2, migrationsPath: __DIR__ . '/database/migrations', moveBack: true);
+```
+
+## Behavior
+
+- All statements of a single migration file are executed inside a transaction. On error, the transaction is rolled back and the migration is not recorded.
+- The `glaurlink_migrations` table stores: `id`, `name` (filename), `batch`, `applied_at`.
+- A single call to `Migration::migrate()` applies all pending migrations and records them with the same `batch` number (classic behavior).
+- Rollbacks are performed in reverse order of application, by batch.
+- If `moveApplied` is true, files are moved to `database/migrations/applied/`. When rolling back with `moveBack`, files are moved back.
+
+This design keeps migrations simple and explicit: write standard SQL to create tables, add or remove fields, or alter columns. No query builder is used.
