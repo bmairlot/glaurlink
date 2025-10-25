@@ -19,7 +19,7 @@ abstract class Model implements JsonSerializable
 {
     protected static string $table;
     protected static array $fillable = [];
-    protected  static array $attributes = [];
+    protected static array $attributes = [];
 
     /**
      * @throws Exception
@@ -31,7 +31,6 @@ abstract class Model implements JsonSerializable
         $this->fill($attributes);
     }
 
-
     /**
      * @throws Exception
      */
@@ -42,13 +41,11 @@ abstract class Model implements JsonSerializable
         return $instance;
     }
 
-
     /**
      * Initialize class properties based on reflection
      */
     protected function initializeProperties(): void
     {
-
         // We want to get properties of only the _Object class and not the effective one
         $reflection = new ReflectionClass($this)->getParentClass();
         $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
@@ -100,6 +97,20 @@ abstract class Model implements JsonSerializable
             if ($reflection->hasType()) {
                 $type = $reflection->getType();
 
+                // Convert string to enum if a property type is an enum
+                if ($type instanceof ReflectionNamedType && enum_exists($type->getName())) {
+                    $enumClass = $type->getName();
+                    if (is_string($value) && !($value instanceof $enumClass)) {
+                        // Try to convert string to enum
+                        $enumValue = $enumClass::from($value);
+                        if ($enumValue !== null) {
+                            $value = $enumValue;
+                        } else {
+                            throw new TypeError("Invalid enum value '$value' for property $key of type " . $type->getName());
+                        }
+                    }
+                }
+
                 // Validate type
                 if (!$this->validateType($value, $type)) {
                     throw new TypeError("Cannot assign " . gettype($value) . " to property $key of type " . $type->getName());
@@ -108,9 +119,8 @@ abstract class Model implements JsonSerializable
 
             $this->$key = $value;
         } else {
-            throw new Exception("Property $key does not exist in " . gettype($this));
+            throw new Exception("Property $key does not exist in " . get_class($this));
         }
-
     }
 
     protected function validateType($value, ReflectionType $type): bool
@@ -118,10 +128,24 @@ abstract class Model implements JsonSerializable
         if ($value === null) {
             return $type->allowsNull();
         }
+
         $class = get_class($type);
         switch ($class) {
             case "ReflectionNamedType":
                 $typeName = $type->getName();
+
+                // Handle enum types
+                if (enum_exists($typeName)) {
+                    // Value can be an enum instance or a valid string value
+                    if ($value instanceof $typeName) {
+                        return true;
+                    }
+                    if (is_string($value)) {
+                        return $typeName::tryFrom($value) !== null;
+                    }
+                    return false;
+                }
+
                 switch ($typeName) {
                     case 'int':
                         return is_int($value) || (is_string($value) && ctype_digit($value));
@@ -133,12 +157,10 @@ abstract class Model implements JsonSerializable
                         return is_bool($value) || $value === 0 || $value === 1 || $value === '0' || $value === '1';
                     case 'array':
                         return is_array($value);
-                    case 'union':
-                        error_log("Found union type");
                     default:
                         return $value instanceof $typeName;
                 }
-                break;
+
             case "ReflectionUnionType":
                 $typeArr = $type->getTypes();
                 foreach ($typeArr as $subType) {
@@ -148,15 +170,13 @@ abstract class Model implements JsonSerializable
                     }
                 }
                 return false;
-                break;
+
             case "ReflectionIntersectionType":
                 throw new TypeError("Intersection Type ($class) should not be used to implement a column (yet)");
-                break;
+
             default:
                 throw new TypeError("Unsupported Reflection Type ($class)");
         }
-
-
     }
 
     protected function prepareValueForDatabase($value, ReflectionType $type): mixed
@@ -172,6 +192,12 @@ abstract class Model implements JsonSerializable
         // Handle named types
         if ($type instanceof ReflectionNamedType) {
             $typeName = $type->getName();
+
+            // Handle enum types - convert to their backing value
+            if (enum_exists($typeName) && $value instanceof \BackedEnum) {
+                return $value->value;
+            }
+
             return match ($typeName) {
                 'bool', 'int' => (int)$value,
                 'float' => (float)$value,
@@ -213,10 +239,10 @@ abstract class Model implements JsonSerializable
      */
     public static function find(?mysqli $dbh, array $attributes): ?static
     {
-
         if (is_null($dbh)) {
             throw new Exception("Database handler cannot be null");
         }
+
         // Build WHERE clause
         $conditions = [];
         $values = [];
@@ -226,7 +252,12 @@ abstract class Model implements JsonSerializable
                 $conditions[] = "`$column` IS NULL";
             } else {
                 $conditions[] = "`$column` = ?";
-                $values[] = $value;
+                // Convert enums to their backing value for the query
+                if ($value instanceof \BackedEnum) {
+                    $values[] = $value->value;
+                } else {
+                    $values[] = $value;
+                }
             }
         }
 
@@ -244,16 +275,18 @@ abstract class Model implements JsonSerializable
         // Bind parameters if we have any
         if (!empty($values)) {
             // Create a type string for bind_param
-            $types = str_repeat('s', count($values)); // Default all to string
+            $types = '';
 
             // Determine the proper type for each value
             foreach ($values as $value) {
                 if (is_int($value)) {
-                    $types = 'i';
+                    $types .= 'i';
                 } elseif (is_float($value)) {
-                    $types = 'd';
+                    $types .= 'd';
                 } elseif (is_bool($value)) {
-                    $types = 'i';
+                    $types .= 'i';
+                } else {
+                    $types .= 's';
                 }
             }
             $stmt->bind_param($types, ...$values);
@@ -268,10 +301,11 @@ abstract class Model implements JsonSerializable
         return null;
     }
 
-
     /**
      * Fetch all records from the table and returns an array of object
      * @param mysqli $dbh Database connection
+     * @param string|null $searchTerm Optional search term
+     * @param array $searchColumns Columns to search in (used with searchTerm)
      * @param array $conditions Optional WHERE conditions
      * @param array $orderBy Optional ORDER BY conditions
      * @param ?int $limit Optional LIMIT
@@ -282,8 +316,8 @@ abstract class Model implements JsonSerializable
      */
     public static function collection(
         mysqli $dbh,
-        ?string $searchTerm=null,
-        array $searchColumns=[],
+        ?string $searchTerm = null,
+        array $searchColumns = [],
         array $conditions = [],
         array $orderBy = [],
         ?int $limit = null,
@@ -299,7 +333,14 @@ abstract class Model implements JsonSerializable
             $andClause = [];
             foreach ($conditions as $column => $value) {
                 $andClause[] = "`$column` = ?";
-                $params[] = $value;
+
+                // Convert enums to their backing value
+                if ($value instanceof \BackedEnum) {
+                    $params[] = $value->value;
+                } else {
+                    $params[] = $value;
+                }
+
                 $types .= is_int($value) ? 'i' : (is_float($value) ? 'd' : 's');
             }
             $whereParts[] = implode(' AND ', $andClause);
@@ -372,7 +413,8 @@ abstract class Model implements JsonSerializable
      * @return int Number of matching records
      * @throws Exception
      */
-    public static function count(mysqli $dbh, array $conditions = []): int {
+    public static function count(mysqli $dbh, array $conditions = []): int
+    {
         $query = "SELECT COUNT(*) as count FROM " . static::$table;
         $params = [];
         $types = '';
@@ -384,7 +426,14 @@ abstract class Model implements JsonSerializable
                     $whereClause[] = "`$column` IS NULL";
                 } else {
                     $whereClause[] = "`$column` = ?";
-                    $params[] = $value;
+
+                    // Convert enums to their backing value
+                    if ($value instanceof \BackedEnum) {
+                        $params[] = $value->value;
+                    } else {
+                        $params[] = $value;
+                    }
+
                     $types .= is_int($value) ? 'i' : (is_float($value) ? 'd' : 's');
                 }
             }
@@ -404,7 +453,7 @@ abstract class Model implements JsonSerializable
         $result = $stmt->get_result();
         $row = $result->fetch_assoc();
 
-        return (int) $row['count'];
+        return (int)$row['count'];
     }
 
     /**
@@ -423,15 +472,13 @@ abstract class Model implements JsonSerializable
         $types = '';
 
         foreach ($properties as $prop) {
-
             $name = $prop->getName();
             $value = $prop->getValue($this);
             $value = $this->prepareValueForDatabase($value, $prop->getType());
 
-
             $fields[] = $name;
             $values[] = '?';
-            $updates[] = "$name = ?";
+            $updates[] = "`$name` = ?";
             $params[] = $value;
 
             // Determine parameter type for bind_param
@@ -442,26 +489,20 @@ abstract class Model implements JsonSerializable
             } else {
                 $types .= 's';
             }
-            error_log("Types : $types" . PHP_EOL);
         }
+
         // Determine if this is an insert or update operation
         if ($this->id === null) {
             // INSERT operation
-//            $sql = "INSERT INTO " . static::$table . " (" . implode(', ', $fields) . ")
-            //                 VALUES (" . implode(', ', $values) . ")";
             $sql = "INSERT INTO " . static::$table . " SET " . implode(', ', $updates);
         } else {
             // UPDATE operation
-            // Remove id from the updates array
-            //array_shift($updates);
-
             $sql = "UPDATE " . static::$table . " SET " . implode(', ', $updates) . " 
                    WHERE id = ?";
             // Add id as the last parameter for WHERE clause
             $params[] = $this->id;
             $types .= 'i';
         }
-
 
         // Prepare and execute the statement
         $stmt = $dbh->prepare($sql);
@@ -475,7 +516,6 @@ abstract class Model implements JsonSerializable
             for ($i = 0; $i < count($params); $i++) {
                 $bind_names[] = &$params[$i];
             }
-            error_log(var_export($bind_names, true));
             call_user_func_array(array($stmt, 'bind_param'), $bind_names);
         }
 
@@ -507,10 +547,14 @@ abstract class Model implements JsonSerializable
         foreach ($properties as $property) {
             $name = $property->getName();
             $value = $property->getValue($this);
+
             // Skip ID if it's null (auto-increment)
             if ($name === 'id' && $value === null) {
                 continue;
             }
+
+            // Prepare value for database (handles enum conversion)
+            $value = $this->prepareValueForDatabase($value, $property->getType());
 
             // Add to our arrays
             $columns[] = "`$name`";
@@ -519,7 +563,7 @@ abstract class Model implements JsonSerializable
 
             // Determine type for bind_param
             $type = $property->getType();
-            if ($type) {
+            if ($type instanceof ReflectionNamedType) {
                 $types .= match ($type->getName()) {
                     'int', 'bool' => 'i',
                     'float' => 'd',
@@ -544,11 +588,11 @@ abstract class Model implements JsonSerializable
             throw new RuntimeException("Failed to prepare statement: " . $dbh->error);
         }
 
-
         // Bind parameters
         if (!empty($params)) {
             $stmt->bind_param($types, ...$params);
         }
+
         // Execute
         $success = $stmt->execute();
 
@@ -558,9 +602,9 @@ abstract class Model implements JsonSerializable
                 $this->id = $dbh->insert_id;
             }
         }
+
         return $success;
     }
-
 
     /**
      * Specify data which should be serialized to JSON
@@ -568,12 +612,16 @@ abstract class Model implements JsonSerializable
      */
     public function jsonSerialize(): array
     {
-        $attributes=[];
+        $attributes = [];
         foreach (array_keys(static::$attributes) as $attribute) {
-            $attributes[$attribute] = $this->$attribute;
-        };
+            $value = $this->$attribute;
+            // Convert enums to their backing value for JSON
+            if ($value instanceof \BackedEnum) {
+                $attributes[$attribute] = $value->value;
+            } else {
+                $attributes[$attribute] = $value;
+            }
+        }
         return $attributes;
     }
-
-
 }
