@@ -1,141 +1,187 @@
 # Glaurlink
 
+A lightweight, zero-dependency ORM for PHP 8.4+ and MariaDB/MySQL.
 
+## Features
 
-## Getting started
+- **Minimal Dependencies** — Only requires PHP core extensions (mysqli, ctype)
+- **Type-Safe Models** — Automatic type validation using PHP reflection
+- **Enum Support** — Native PHP backed enum integration for database columns
+- **Simple CRUD** — Intuitive `find()`, `save()`, `insert()`, `collection()`, and `count()` methods
+- **Search & Pagination** — Built-in support for LIKE queries, ordering, and pagination
+- **Collections** — Type-safe, iterable collections implementing Iterator, ArrayAccess, and Countable
+- **JSON Serialization** — Models and collections are JSON-serializable out of the box
+- **Lightweight Migrations** — File-based migrations with transaction support and rollback capability
 
-Glaurlink is an ORM (Object Relational Mapper) for Mariadb.
+## Requirements
 
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.ancalagon.be/ancalagon/glaurlink.git
-git branch -M main
-git push -uf origin main
-```
-
-## Integrate with your tools
-
-- [ ] [Set up project integrations](http://gitlab.ancalagon.be/ancalagon/glaurlink/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+- PHP 8.4 or higher
+- mysqli extension
+- ctype extension
+- MariaDB or MySQL database
 
 ## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
-
----
-
-# Database Migrations (Glaurlink)
-
-Glaurlink provides a lightweight migration mechanism with zero external dependencies, based on plain SQL statements executed through mysqli.
-
-- Tracks applied migrations in a dedicated table: `glaurlink_migrations`.
-- Applies new migrations from a directory in your application (not in this library).
-- Supports rollback by batches.
-- Optionally moves applied files to an `applied/` subdirectory.
-
-## Location of migration files
-
-By default, migrations are loaded from `database/migrations` relative to your project's root (current working directory).
-
-You can override the path via your application's composer.json:
-
-```json
-{
-  "extra": {
-    "glaurlink": {
-      "migrations_path": "database/migrations"
-    }
-  }
-}
+```bash
+composer require ancalagon/glaurlink
 ```
 
-You may also pass an explicit path to the API methods.
+## Quick Start
 
-## Migration file format
+### Defining a Model
 
-Each migration is a PHP file returning an array with `up` and `down` keys. Each key can be a string (single SQL statement) or an array of SQL statements. Files are applied in lexicographical order by filename, so prefix them with a timestamp.
-
-Example file: `database/migrations/20251022112900_create_users_table.php`
+Create a model by extending the base `Model` class:
 
 ```php
 <?php
+
+use Ancalagon\Glaurlink\Model;
+
+class User extends Model
+{
+    protected static string $table = 'users';
+    protected static array $fillable = ['name', 'email', 'is_active'];
+
+    public ?int $id = null;
+    public string $name;
+    public string $email;
+    public bool $is_active = false;
+}
+```
+
+### Basic Operations
+
+```php
+<?php
+
+$dbh = new mysqli('localhost', 'user', 'password', 'database');
+
+// Create and save a new record
+$user = new User([
+    'name' => 'John Doe',
+    'email' => 'john@example.com'
+]);
+$user->save($dbh);
+
+// Find a single record
+$user = User::find($dbh, ['id' => 1]);
+$user = User::find($dbh, ['email' => 'john@example.com']);
+
+// Update a record
+$user->name = 'Jane Doe';
+$user->save($dbh);
+
+// Get a collection of records
+$activeUsers = User::collection($dbh, conditions: ['is_active' => true]);
+
+// Count records
+$count = User::count($dbh, ['is_active' => true]);
+```
+
+### Working with Collections
+
+The `collection()` method returns a `Collection` object with full iteration support:
+
+```php
+<?php
+
+// Fetch with conditions, ordering, and pagination
+$users = User::collection(
+    $dbh,
+    conditions: ['is_active' => true],
+    orderBy: ['name' => 'ASC'],
+    limit: 10,
+    offset: 0
+);
+
+// Search across multiple columns
+$users = User::collection(
+    $dbh,
+    searchTerm: 'john',
+    searchColumns: ['name', 'email']
+);
+
+// Iterate over results
+foreach ($users as $user) {
+    echo $user->name . "\n";
+}
+
+// Array-like access
+$firstUser = $users[0];
+$totalCount = count($users);
+
+// JSON serialization
+echo json_encode($users);
+```
+
+### Using Enums
+
+Glaurlink supports PHP backed enums for type-safe column values:
+
+```php
+<?php
+
+enum UserStatus: string
+{
+    case Active = 'active';
+    case Inactive = 'inactive';
+    case Pending = 'pending';
+}
+
+class User extends Model
+{
+    protected static string $table = 'users';
+
+    public ?int $id = null;
+    public string $name;
+    public UserStatus $status = UserStatus::Pending;
+}
+
+// Enums are automatically converted when reading from/writing to the database
+$user = new User(['name' => 'John', 'status' => UserStatus::Active]);
+$user->save($dbh);
+
+// Find by enum value
+$activeUsers = User::collection($dbh, conditions: ['status' => UserStatus::Active]);
+```
+
+## Migrations
+
+Glaurlink includes a lightweight migration system for managing database schema changes.
+
+### Migration File Location
+
+By default, migrations are loaded from `database/migrations` relative to your project root. You can customize this in your `composer.json`:
+
+```json
+{
+    "extra": {
+        "glaurlink": {
+            "migrations_path": "database/migrations"
+        }
+    }
+}
+```
+
+### Creating a Migration
+
+Create a PHP file in your migrations directory. Files are applied in lexicographical order, so prefix with a timestamp:
+
+**`database/migrations/20251229120000_create_users_table.php`**
+
+```php
+<?php
+
 return [
     'up' => [
-        "CREATE TABLE users (\n" .
-        "  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,\n" .
-        "  name VARCHAR(255) NOT NULL,\n" .
-        "  email VARCHAR(255) NULL,\n" .
-        "  is_active TINYINT(1) NOT NULL DEFAULT 0\n" .
-        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-        "ALTER TABLE users ADD INDEX idx_users_email (email);",
+        "CREATE TABLE users (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NULL,
+            status ENUM('active', 'inactive', 'pending') NOT NULL DEFAULT 'pending',
+            is_active TINYINT(1) NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
     ],
     'down' => [
         "DROP TABLE IF EXISTS users;",
@@ -143,33 +189,73 @@ return [
 ];
 ```
 
-## Using the Migration API
+### Running Migrations
 
 ```php
+<?php
+
 use Ancalagon\Glaurlink\Migration;
-use mysqli;
 
 $dbh = new mysqli('localhost', 'user', 'password', 'database');
 
-// Apply all pending migrations (from default or configured path)
+// Apply all pending migrations
 Migration::migrate($dbh);
 
-// Apply from a specific directory, and move files to applied/
-Migration::migrate($dbh, __DIR__ . '/database/migrations', moveApplied: true);
+// Apply from a specific directory
+Migration::migrate($dbh, __DIR__ . '/database/migrations');
 
-// Roll back the last batch (the set applied by the most recent migrate call)
+// Roll back the last batch
 Migration::rollback($dbh);
 
-// Roll back the last two batches, moving files back from applied/
-Migration::rollback($dbh, steps: 2, migrationsPath: __DIR__ . '/database/migrations', moveBack: true);
+// Roll back multiple batches
+Migration::rollback($dbh, steps: 2);
 ```
 
-## Behavior
+### Migration Behavior
 
-- All statements of a single migration file are executed inside a transaction. On error, the transaction is rolled back and the migration is not recorded.
-- The `glaurlink_migrations` table stores: `id`, `name` (filename), `batch`, `applied_at`.
-- A single call to `Migration::migrate()` applies all pending migrations and records them with the same `batch` number (classic behavior).
-- Rollbacks are performed in reverse order of application, by batch.
-- If `moveApplied` is true, files are moved to `database/migrations/applied/`. When rolling back with `moveBack`, files are moved back.
+- Each migration runs within a transaction — on error, changes are rolled back
+- Applied migrations are tracked in a `glaurlink_migrations` table
+- Migrations applied together share the same batch number
+- Rollbacks are performed in reverse order by batch
+- Optionally, applied migration files can be moved to an `applied/` subdirectory
 
-This design keeps migrations simple and explicit: write standard SQL to create tables, add or remove fields, or alter columns. No query builder is used.
+## API Reference
+
+### Model Methods
+
+| Method | Description |
+|--------|-------------|
+| `__construct(array $attributes = [])` | Create a new model instance |
+| `static create(array $attributes = [])` | Factory method to create a new instance |
+| `fill(array $attributes)` | Mass-assign attributes |
+| `save(mysqli $dbh)` | Insert or update the record |
+| `insert(mysqli $dbh)` | Explicitly insert a new record |
+| `static find(mysqli $dbh, array $attributes)` | Find a single record by conditions |
+| `static collection(mysqli $dbh, ...)` | Fetch multiple records with filtering |
+| `static count(mysqli $dbh, array $conditions = [])` | Count matching records |
+| `jsonSerialize()` | Get array representation for JSON encoding |
+
+### Collection Methods
+
+| Method | Description |
+|--------|-------------|
+| `count()` | Get the number of items |
+| `toArray()` | Convert to a plain array |
+| `jsonSerialize()` | Get array representation for JSON encoding |
+| Array access | `$collection[0]`, `isset($collection[0])` |
+| Iteration | `foreach ($collection as $item)` |
+
+### Migration Methods
+
+| Method | Description |
+|--------|-------------|
+| `static migrate(mysqli $dbh, ...)` | Apply pending migrations |
+| `static rollback(mysqli $dbh, ...)` | Roll back migrations by batch |
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+## Author
+
+Bruno Mairlot

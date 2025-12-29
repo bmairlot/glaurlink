@@ -1,25 +1,31 @@
 {
   "name": "ancalagon/glaurlink",
-  "description": "Glaurlink project",
+  "description": "A lightweight, zero-dependency ORM for PHP 8.4+ and MariaDB/MySQL with type-safe models, enum support, and built-in migrations",
   "type": "library",
   "license": "MIT",
-  "autoload": {
-    "psr-4": {
-      "Ancalagon\\Glaurlink\\": "src/"
-    }
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "Ancalagon\\Glaurlink\\Tests\\": "tests/",
-      "Ancalagon\\Glaurlink\\": "src/"
-    }
-  },
+  "keywords": [
+    "orm",
+    "database",
+    "mysql",
+    "mariadb",
+    "model",
+    "active-record",
+    "mysqli",
+    "php8",
+    "migrations",
+    "lightweight"
+  ],
+  "homepage": "https://github.com/bmairlot/glaurlink",
   "authors": [
     {
       "name": "Bruno Mairlot",
       "role": "Lead Developer"
     }
   ],
+  "support": {
+    "issues": "https://github.com/bmairlot/glaurlink/issues",
+    "source": "https://github.com/bmairlot/glaurlink"
+  },
   "require": {
     "php": ">=8.4",
     "ext-mysqli": "*",
@@ -30,9 +36,24 @@
     "phpstan/phpstan": "^1.10",
     "squizlabs/php_codesniffer": "^3.7"
   },
-  "minimum-stability": "stable",
-  "prefer-stable": true,
+  "autoload": {
+    "psr-4": {
+      "Ancalagon\\Glaurlink\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Ancalagon\\Glaurlink\\Tests\\": "tests/"
+    }
+  },
+  "extra": {
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  },
   "config": {
     "sort-packages": true
-  }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
 }
