@@ -18,6 +18,8 @@ use TypeError;
 abstract class Model implements JsonSerializable
 {
     protected static string $table;
+    protected static string $primaryKey = 'id';
+    protected static bool $autoIncrement = true;
     protected static array $fillable = [];
     protected static array $attributes = [];
 
@@ -39,6 +41,70 @@ abstract class Model implements JsonSerializable
         $instance = new static();
         $instance->fill($attributes);
         return $instance;
+    }
+
+    /**
+     * Check if this is a new (unsaved) record
+     */
+    public function isNew(): bool
+    {
+        $pk = static::$primaryKey;
+        return $this->$pk === null;
+    }
+
+    /**
+     * Get the primary key value
+     */
+    public function getKey(): mixed
+    {
+        $pk = static::$primaryKey;
+        return $this->$pk;
+    }
+
+    /**
+     * Set the primary key value
+     */
+    protected function setKey(mixed $value): void
+    {
+        $pk = static::$primaryKey;
+        $this->$pk = $value;
+    }
+
+    /**
+     * Get the primary key column name
+     */
+    public static function getKeyName(): string
+    {
+        return static::$primaryKey;
+    }
+
+    /**
+     * Check if the model uses auto-increment
+     */
+    public static function isAutoIncrement(): bool
+    {
+        return static::$autoIncrement;
+    }
+
+    /**
+     * Build WHERE clause for primary key
+     *
+     * @return array{clause: string, params: array, types: string}
+     */
+    protected function buildPrimaryKeyWhere(): array
+    {
+        $pk = static::$primaryKey;
+        $value = $this->$pk;
+
+        if ($value instanceof \BackedEnum) {
+            $value = $value->value;
+        }
+
+        return [
+            'clause' => "`$pk` = ?",
+            'params' => [$value],
+            'types' => is_int($value) ? 'i' : 's'
+        ];
     }
 
     /**
@@ -302,6 +368,19 @@ abstract class Model implements JsonSerializable
     }
 
     /**
+     * Find a record by its primary key
+     *
+     * @param mysqli $dbh Database connection
+     * @param mixed $id Primary key value
+     * @return static|null
+     * @throws Exception
+     */
+    public static function findByKey(mysqli $dbh, mixed $id): ?static
+    {
+        return static::find($dbh, [static::$primaryKey => $id]);
+    }
+
+    /**
      * Fetch all records from the table and returns an array of object
      * @param mysqli $dbh Database connection
      * @param string|null $searchTerm Optional search term
@@ -465,24 +544,34 @@ abstract class Model implements JsonSerializable
         $reflection = new ReflectionClass($this)->getParentClass();
         $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
 
-        $fields = [];
-        $values = [];
+        $pk = static::$primaryKey;
+        $isNew = $this->isNew();
+
         $updates = [];
         $params = [];
         $types = '';
 
         foreach ($properties as $prop) {
             $name = $prop->getName();
+
+            // Skip primary key in SET clause for both INSERT (if auto-increment) and UPDATE
+            if ($name === $pk) {
+                if ($isNew && static::$autoIncrement) {
+                    continue; // Skip auto-increment PK on insert
+                }
+                if (!$isNew) {
+                    continue; // Skip PK in SET clause for update (it goes in WHERE)
+                }
+            }
+
             $value = $prop->getValue($this);
             $value = $this->prepareValueForDatabase($value, $prop->getType());
 
-            $fields[] = $name;
-            $values[] = '?';
             $updates[] = "`$name` = ?";
             $params[] = $value;
 
             // Determine parameter type for bind_param
-            if (is_int($value) || $name === 'id' || $prop->getType()?->getName() === 'bool') {
+            if (is_int($value) || $prop->getType()?->getName() === 'bool') {
                 $types .= 'i';
             } elseif (is_double($value)) {
                 $types .= 'd';
@@ -492,16 +581,16 @@ abstract class Model implements JsonSerializable
         }
 
         // Determine if this is an insert or update operation
-        if ($this->id === null) {
+        if ($isNew) {
             // INSERT operation
             $sql = "INSERT INTO " . static::$table . " SET " . implode(', ', $updates);
         } else {
-            // UPDATE operation
+            // UPDATE operation - add primary key to WHERE clause
+            $pkWhere = $this->buildPrimaryKeyWhere();
             $sql = "UPDATE " . static::$table . " SET " . implode(', ', $updates) . " 
-                   WHERE id = ?";
-            // Add id as the last parameter for WHERE clause
-            $params[] = $this->id;
-            $types .= 'i';
+                   WHERE " . $pkWhere['clause'];
+            $params = array_merge($params, $pkWhere['params']);
+            $types .= $pkWhere['types'];
         }
 
         // Prepare and execute the statement
@@ -524,9 +613,9 @@ abstract class Model implements JsonSerializable
             throw new Exception("Failed to execute statement: " . $stmt->error);
         }
 
-        // If this was an insert, update the id property
-        if ($this->id === null) {
-            $this->id = $stmt->insert_id;
+        // If this was an insert with auto-increment, update the primary key property
+        if ($isNew && static::$autoIncrement && $dbh->insert_id) {
+            $this->setKey($dbh->insert_id);
         }
 
         $stmt->close();
@@ -539,6 +628,8 @@ abstract class Model implements JsonSerializable
         $reflection = new ReflectionClass($this)->getParentClass();
         $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
 
+        $pk = static::$primaryKey;
+
         $columns = [];
         $values = [];
         $params = [];
@@ -548,8 +639,8 @@ abstract class Model implements JsonSerializable
             $name = $property->getName();
             $value = $property->getValue($this);
 
-            // Skip ID if it's null (auto-increment)
-            if ($name === 'id' && $value === null) {
+            // Skip primary key if it's null and auto-increment is enabled
+            if ($name === $pk && $value === null && static::$autoIncrement) {
                 continue;
             }
 
@@ -597,13 +688,94 @@ abstract class Model implements JsonSerializable
         $success = $stmt->execute();
 
         if ($success) {
-            // Set the ID if it was auto-generated
-            if ($dbh->insert_id) {
-                $this->id = $dbh->insert_id;
+            // Set the primary key if it was auto-generated
+            if (static::$autoIncrement && $dbh->insert_id) {
+                $this->setKey($dbh->insert_id);
             }
         }
 
         return $success;
+    }
+
+    /**
+     * Delete the current record from the database
+     *
+     * @param mysqli $dbh Database connection
+     * @return bool True on success
+     * @throws Exception
+     */
+    public function delete(mysqli $dbh): bool
+    {
+        if ($this->isNew()) {
+            throw new Exception("Cannot delete a record that hasn't been saved");
+        }
+
+        $pkWhere = $this->buildPrimaryKeyWhere();
+        $sql = "DELETE FROM " . static::$table . " WHERE " . $pkWhere['clause'] . " LIMIT 1";
+
+        $stmt = $dbh->prepare($sql);
+        if (!$stmt) {
+            throw new Exception("Failed to prepare statement: " . $dbh->error);
+        }
+
+        if (!empty($pkWhere['params'])) {
+            $stmt->bind_param($pkWhere['types'], ...$pkWhere['params']);
+        }
+
+        $success = $stmt->execute();
+        $stmt->close();
+
+        if ($success) {
+            // Reset primary key to indicate the record no longer exists
+            $this->setKey(null);
+        }
+
+        return $success;
+    }
+
+    /**
+     * Refresh the model from the database
+     *
+     * @param mysqli $dbh Database connection
+     * @return bool True if record was found and refreshed
+     * @throws Exception
+     */
+    public function refresh(mysqli $dbh): bool
+    {
+        if ($this->isNew()) {
+            return false;
+        }
+
+        $fresh = static::findByKey($dbh, $this->getKey());
+        if ($fresh === null) {
+            return false;
+        }
+
+        // Copy all properties from a fresh instance
+        $reflection = new ReflectionClass($this)->getParentClass();
+        $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
+
+        foreach ($properties as $prop) {
+            $name = $prop->getName();
+            if (!$prop->isStatic()) {
+                $this->$name = $fresh->$name;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if a record exists in the database with the given conditions
+     *
+     * @param mysqli $dbh Database connection
+     * @param array $conditions WHERE conditions
+     * @return bool
+     * @throws Exception
+     */
+    public static function exists(mysqli $dbh, array $conditions): bool
+    {
+        return static::count($dbh, $conditions) > 0;
     }
 
     /**
