@@ -162,6 +162,20 @@ By default, migrations are loaded from `database/migrations` relative to your pr
     }
 }
 ```
+### Structure for the Migrations Table
+
+Use the following query to create the `glaurlink_migrations` table:
+
+```sql
+CREATE TABLE `glaurlink_migrations` (
+    `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+    `name` varchar(255) NOT NULL,
+    `batch` int(11) NOT NULL,
+    `applied_at` timestamp NOT NULL DEFAULT current_timestamp(),
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uniq_name` (`name`)
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+```
 
 ### Creating a Migration
 
