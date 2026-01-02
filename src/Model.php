@@ -734,6 +734,73 @@ abstract class Model implements JsonSerializable
     }
 
     /**
+     * Delete records from the database based on attribute conditions
+     *
+     * @param mysqli $dbh Database connection
+     * @param array $attributes Attribute-value pairs to match
+     * @return int Number of deleted records
+     * @throws Exception
+     */
+    public static function deleteWhere(mysqli $dbh, array $attributes): int
+    {
+        if (empty($attributes)) {
+            throw new Exception("Attributes array cannot be empty for delete operation");
+        }
+
+        // Build WHERE clause
+        $conditions = [];
+        $params = [];
+        $types = '';
+
+        foreach ($attributes as $column => $value) {
+            if ($value === null) {
+                $conditions[] = "`$column` IS NULL";
+            } else {
+                $conditions[] = "`$column` = ?";
+
+                // Convert enums to their backing value
+                if ($value instanceof \BackedEnum) {
+                    $params[] = $value->value;
+                } else {
+                    $params[] = $value;
+                }
+
+                // Determine parameter type
+                if (is_int($value)) {
+                    $types .= 'i';
+                } elseif (is_float($value)) {
+                    $types .= 'd';
+                } else {
+                    $types .= 's';
+                }
+            }
+        }
+
+        $whereClause = implode(' AND ', $conditions);
+        $sql = "DELETE FROM " . static::$table . " WHERE " . $whereClause;
+
+        $stmt = $dbh->prepare($sql);
+        if (!$stmt) {
+            throw new Exception("Failed to prepare statement: " . $dbh->error);
+        }
+
+        // Bind parameters if we have any
+        if (!empty($params)) {
+            $stmt->bind_param($types, ...$params);
+        }
+
+        $success = $stmt->execute();
+        $affectedRows = $stmt->affected_rows;
+        $stmt->close();
+
+        if (!$success) {
+            throw new Exception("Failed to execute delete statement: " . $dbh->error);
+        }
+
+        return $affectedRows;
+    }
+
+    /**
      * Refresh the model from the database
      *
      * @param mysqli $dbh Database connection
