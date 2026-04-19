@@ -1,0 +1,2 @@
+- [Test DB setup](../../../../../memory/feedback_test_db_setup.md) — Dynamic test_<rand> DB, fail-fast if exists, credentials from tests/.env
+- [Model 3-level hierarchy](../../../../../memory/feedback_model_3level_hierarchy.md) — getParentClass() reflection requires abstract schema class between Model and concrete class

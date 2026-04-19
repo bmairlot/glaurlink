@@ -233,6 +233,52 @@ Migration::rollback($dbh, steps: 2);
 - Rollbacks are performed in reverse order by batch
 - Optionally, applied migration files can be moved to an `applied/` subdirectory
 
+## DB-Managed Columns
+
+Many columns are `NOT NULL` in MariaDB but filled by the server: `AUTO_INCREMENT` primary keys, `DEFAULT CURRENT_TIMESTAMP`, `ON UPDATE CURRENT_TIMESTAMP`, `DEFAULT UUID()`, generated columns, etc. Glaurlink supports these via the `$generated` property and opt-in rehydration.
+
+### The `$generated` property
+
+Declare columns whose values may be produced by the database:
+
+```php
+class User extends Model
+{
+    protected static string $table     = 'users';
+    protected static array  $fillable  = ['name', 'email'];
+    protected static array  $generated = ['created_at', 'updated_at'];
+
+    public ?int $id = null;
+    public string $name;
+    public string $email;
+    public ?string $created_at = null;  // DB fills via DEFAULT CURRENT_TIMESTAMP
+    public ?string $updated_at = null;  // DB fills via ON UPDATE CURRENT_TIMESTAMP
+}
+```
+
+When a `$generated` column is `null` at save time, it is **omitted from the INSERT/UPDATE column list** so MariaDB can apply its default, trigger, or generation rule. If the property has an explicit non-null value, it is emitted verbatim — developer intent always wins.
+
+> **MariaDB strict mode**: `DEFAULT` and `ON UPDATE` rules fire only when the column is absent from the statement. Sending `NULL` to a `NOT NULL` column in strict mode is an error. That's why Glaurlink omits the column entirely rather than sending `NULL`.
+
+### Rehydration
+
+By default, `save()` and `insert()` issue no extra queries. Pass `rehydrate: true` to re-read the row from the database after the write, populating server-computed values:
+
+```php
+$user = new User(['name' => 'Jane', 'email' => 'jane@example.com']);
+$user->save($dbh);                  // created_at omitted from SQL; $user->created_at still null in PHP
+$user->save($dbh, rehydrate: true); // after the write, $user->created_at holds the DB value
+
+// To let ON UPDATE CURRENT_TIMESTAMP fire on a subsequent update:
+$user->name       = 'Jane Doe';
+$user->updated_at = null;          // signal "let the DB refresh this"
+$user->save($dbh, rehydrate: true);
+```
+
+### Uninitialized properties
+
+Non-nullable typed properties without a PHP default (e.g. `public string $name;`) are legal. They remain uninitialized until set. Uninitialized properties are automatically omitted from INSERT/UPDATE SQL. Accessing them before assignment raises PHP's standard `Error: must not be accessed before initialization`.
+
 ## API Reference
 
 ### Model Methods
@@ -242,8 +288,8 @@ Migration::rollback($dbh, steps: 2);
 | `__construct(array $attributes = [])` | Create a new model instance |
 | `static create(array $attributes = [])` | Factory method to create a new instance |
 | `fill(array $attributes)` | Mass-assign attributes |
-| `save(mysqli $dbh)` | Insert or update the record |
-| `insert(mysqli $dbh)` | Explicitly insert a new record |
+| `save(mysqli $dbh, bool $rehydrate = false)` | Insert or update the record |
+| `insert(mysqli $dbh, bool $rehydrate = false)` | Explicitly insert a new record |
 | `static find(mysqli $dbh, array $attributes)` | Find a single record by conditions |
 | `static collection(mysqli $dbh, ...)` | Fetch multiple records with filtering |
 | `static count(mysqli $dbh, array $conditions = [])` | Count matching records |

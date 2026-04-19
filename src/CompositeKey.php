@@ -55,11 +55,15 @@ trait CompositeKey
      * Check if this is a new (unsaved) record
      *
      * For composite keys, a record is considered new if ANY of the
-     * primary key components is null.
+     * primary key components is null or uninitialized.
      */
     public function isNew(): bool
     {
         foreach (static::$primaryKeys as $key) {
+            $prop = new ReflectionProperty($this, $key);
+            if (!$prop->isInitialized($this)) {
+                return true;
+            }
             if ($this->$key === null) {
                 return true;
             }
@@ -76,7 +80,8 @@ trait CompositeKey
     {
         $values = [];
         foreach (static::$primaryKeys as $key) {
-            $values[$key] = $this->$key;
+            $prop = new ReflectionProperty($this, $key);
+            $values[$key] = $prop->isInitialized($this) ? $this->$key : null;
         }
         return $values;
     }
@@ -114,6 +119,11 @@ trait CompositeKey
     public static function isAutoIncrement(): bool
     {
         return false;
+    }
+
+    protected function isPrimaryKeyColumn(string $name): bool
+    {
+        return in_array($name, static::$primaryKeys, true);
     }
 
     /**
@@ -182,16 +192,13 @@ trait CompositeKey
      *
      * @throws Exception
      */
-    public function save(mysqli $dbh): bool
+    public function save(mysqli $dbh, bool $rehydrate = false): bool
     {
-        // We want to get properties of only the _Object class and not the effective one
         $reflection = new ReflectionClass($this)->getParentClass();
         $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
 
         $isNew = $this->isNew();
 
-        // For composite keys, we need to determine if this is truly a new record
-        // by checking if a record with these keys already exists
         if (!$isNew) {
             $existing = static::findByKey($dbh, $this->getKey());
             $isNew = ($existing === null);
@@ -202,20 +209,19 @@ trait CompositeKey
         $types = '';
 
         foreach ($properties as $prop) {
-            $name = $prop->getName();
-
-            // For UPDATE, skip primary key columns in the SET clause
-            if (!$isNew && in_array($name, static::$primaryKeys, true)) {
+            if ($prop->isStatic()) {
                 continue;
             }
 
-            $value = $prop->getValue($this);
-            $value = $this->prepareValueForDatabase($value, $prop->getType());
+            if (!$this->shouldPersistProperty($prop, $isNew)) {
+                continue;
+            }
 
-            $updates[] = "`$name` = ?";
+            $value = $this->prepareValueForDatabase($prop->getValue($this), $prop->getType());
+
+            $updates[] = '`' . $prop->getName() . '` = ?';
             $params[] = $value;
 
-            // Determine parameter type for bind_param
             if (is_int($value) || $prop->getType()?->getName() === 'bool') {
                 $types .= 'i';
             } elseif (is_double($value)) {
@@ -226,38 +232,34 @@ trait CompositeKey
         }
 
         if ($isNew) {
-            // INSERT operation
             $sql = "INSERT INTO " . static::$table . " SET " . implode(', ', $updates);
         } else {
-            // UPDATE operation
             $pkWhere = $this->buildPrimaryKeyWhere();
-            $sql = "UPDATE " . static::$table . " SET " . implode(', ', $updates) . " 
-                   WHERE " . $pkWhere['clause'];
+            $sql = "UPDATE " . static::$table . " SET " . implode(', ', $updates)
+                 . " WHERE " . $pkWhere['clause'];
             $params = array_merge($params, $pkWhere['params']);
             $types .= $pkWhere['types'];
         }
 
-        // Prepare and execute the statement
         $stmt = $dbh->prepare($sql);
         if (!$stmt) {
             throw new Exception("Failed to prepare statement: " . $dbh->error);
         }
 
-        // Bind parameters dynamically
         if (!empty($params)) {
-            $bind_names[] = $types;
-            for ($i = 0; $i < count($params); $i++) {
-                $bind_names[] = &$params[$i];
-            }
-            call_user_func_array(array($stmt, 'bind_param'), $bind_names);
+            $stmt->bind_param($types, ...$params);
         }
 
-        // Execute the statement
         if (!$stmt->execute()) {
             throw new Exception("Failed to execute statement: " . $stmt->error);
         }
 
         $stmt->close();
+
+        if ($rehydrate) {
+            $this->rehydrateFromDatabase($dbh);
+        }
+
         return true;
     }
 
@@ -266,11 +268,11 @@ trait CompositeKey
      *
      * @throws Exception
      */
-    public function insert(mysqli $dbh): bool
+    public function insert(mysqli $dbh, bool $rehydrate = false): bool
     {
-        // Validate that all primary key components are set
         foreach (static::$primaryKeys as $key) {
-            if ($this->$key === null) {
+            $prop = new ReflectionProperty($this, $key);
+            if (!$prop->isInitialized($this) || $this->$key === null) {
                 throw new RuntimeException("Cannot insert: primary key component '$key' is null. Composite keys require all values to be set.");
             }
         }
@@ -283,19 +285,22 @@ trait CompositeKey
         $params = [];
         $types = '';
 
-        foreach ($properties as $property) {
-            $name = $property->getName();
-            $value = $property->getValue($this);
+        foreach ($properties as $prop) {
+            if ($prop->isStatic()) {
+                continue;
+            }
 
-            // Prepare value for database (handles enum conversion)
-            $value = $this->prepareValueForDatabase($value, $property->getType());
+            if (!$this->shouldPersistProperty($prop, true)) {
+                continue;
+            }
 
-            $columns[] = "`$name`";
-            $values[] = "?";
+            $value = $this->prepareValueForDatabase($prop->getValue($this), $prop->getType());
+
+            $columns[] = '`' . $prop->getName() . '`';
+            $values[] = '?';
             $params[] = $value;
 
-            // Determine type for bind_param
-            $type = $property->getType();
+            $type = $prop->getType();
             if ($type instanceof ReflectionNamedType) {
                 $types .= match ($type->getName()) {
                     'int', 'bool' => 'i',
@@ -325,6 +330,10 @@ trait CompositeKey
 
         $success = $stmt->execute();
         $stmt->close();
+
+        if ($success && $rehydrate) {
+            $this->rehydrateFromDatabase($dbh);
+        }
 
         return $success;
     }

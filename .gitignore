@@ -1,3 +1,9 @@
 vendor
 .idea
 composer.lock
+.phpunit.result.cache
+tests/.env
+.claude/settings.local.json
+.claude/.credentials.json
+.claude/cache/
+.claude/logs/

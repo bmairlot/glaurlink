@@ -21,6 +21,7 @@ abstract class Model implements JsonSerializable
     protected static string $primaryKey = 'id';
     protected static bool $autoIncrement = true;
     protected static array $fillable = [];
+    protected static array $generated = [];
     protected static array $attributes = [];
 
     /**
@@ -49,6 +50,10 @@ abstract class Model implements JsonSerializable
     public function isNew(): bool
     {
         $pk = static::$primaryKey;
+        $prop = new ReflectionProperty($this, $pk);
+        if (!$prop->isInitialized($this)) {
+            return true;
+        }
         return $this->$pk === null;
     }
 
@@ -58,6 +63,10 @@ abstract class Model implements JsonSerializable
     public function getKey(): mixed
     {
         $pk = static::$primaryKey;
+        $prop = new ReflectionProperty($this, $pk);
+        if (!$prop->isInitialized($this)) {
+            return null;
+        }
         return $this->$pk;
     }
 
@@ -73,7 +82,7 @@ abstract class Model implements JsonSerializable
     /**
      * Get the primary key column name
      */
-    public static function getKeyName(): string
+    public static function getKeyName(): string|array
     {
         return static::$primaryKey;
     }
@@ -112,29 +121,19 @@ abstract class Model implements JsonSerializable
      */
     protected function initializeProperties(): void
     {
-        // We want to get properties of only the _Object class and not the effective one
         $reflection = new ReflectionClass($this)->getParentClass();
         $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
 
         foreach ($properties as $property) {
             $name = $property->getName();
-            // Skip static properties
             if ($property->isStatic()) {
                 continue;
             }
 
-            // Get default value if it exists
-            $defaultValue = $property->hasDefaultValue() ? $property->getDefaultValue() : null;
-
-            // Initialize the property in attributes
-            static::$attributes[$name] = $defaultValue;
-
-            // If the property has a type, we can enforce it
-            if ($property->hasType()) {
-                $type = $property->getType();
-                if (!$type->allowsNull() && $defaultValue === null) {
-                    throw new RuntimeException("Non-nullable property $name must have a default value");
-                }
+            if ($property->hasDefaultValue()) {
+                static::$attributes[$name] = $property->getDefaultValue();
+            } else {
+                static::$attributes[$name] = null;
             }
         }
     }
@@ -535,16 +534,48 @@ abstract class Model implements JsonSerializable
         return (int)$row['count'];
     }
 
+    protected function isPrimaryKeyColumn(string $name): bool
+    {
+        return $name === static::$primaryKey;
+    }
+
+    protected function shouldPersistProperty(ReflectionProperty $prop, bool $isNew): bool
+    {
+        $name = $prop->getName();
+
+        if (!$prop->isInitialized($this)) {
+            return false;
+        }
+
+        $value = $prop->getValue($this);
+
+        if (!$isNew && $this->isPrimaryKeyColumn($name)) {
+            return false;
+        }
+
+        if ($isNew
+            && static::$autoIncrement
+            && $this->isPrimaryKeyColumn($name)
+            && $value === null
+        ) {
+            return false;
+        }
+
+        if ($value === null && in_array($name, static::$generated, true)) {
+            return false;
+        }
+
+        return true;
+    }
+
     /**
      * @throws Exception
      */
-    public function save(mysqli $dbh): bool
+    public function save(mysqli $dbh, bool $rehydrate = false): bool
     {
-        // We want to get properties of only the _Object class and not the effective one
         $reflection = new ReflectionClass($this)->getParentClass();
         $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
 
-        $pk = static::$primaryKey;
         $isNew = $this->isNew();
 
         $updates = [];
@@ -552,25 +583,19 @@ abstract class Model implements JsonSerializable
         $types = '';
 
         foreach ($properties as $prop) {
-            $name = $prop->getName();
-
-            // Skip primary key in SET clause for both INSERT (if auto-increment) and UPDATE
-            if ($name === $pk) {
-                if ($isNew && static::$autoIncrement) {
-                    continue; // Skip auto-increment PK on insert
-                }
-                if (!$isNew) {
-                    continue; // Skip PK in SET clause for update (it goes in WHERE)
-                }
+            if ($prop->isStatic()) {
+                continue;
             }
 
-            $value = $prop->getValue($this);
-            $value = $this->prepareValueForDatabase($value, $prop->getType());
+            if (!$this->shouldPersistProperty($prop, $isNew)) {
+                continue;
+            }
 
-            $updates[] = "`$name` = ?";
+            $value = $this->prepareValueForDatabase($prop->getValue($this), $prop->getType());
+
+            $updates[] = '`' . $prop->getName() . '` = ?';
             $params[] = $value;
 
-            // Determine parameter type for bind_param
             if (is_int($value) || $prop->getType()?->getName() === 'bool') {
                 $types .= 'i';
             } elseif (is_double($value)) {
@@ -580,80 +605,68 @@ abstract class Model implements JsonSerializable
             }
         }
 
-        // Determine if this is an insert or update operation
         if ($isNew) {
-            // INSERT operation
             $sql = "INSERT INTO " . static::$table . " SET " . implode(', ', $updates);
         } else {
-            // UPDATE operation - add primary key to WHERE clause
             $pkWhere = $this->buildPrimaryKeyWhere();
-            $sql = "UPDATE " . static::$table . " SET " . implode(', ', $updates) . " 
-                   WHERE " . $pkWhere['clause'];
+            $sql = "UPDATE " . static::$table . " SET " . implode(', ', $updates)
+                 . " WHERE " . $pkWhere['clause'];
             $params = array_merge($params, $pkWhere['params']);
             $types .= $pkWhere['types'];
         }
 
-        // Prepare and execute the statement
         $stmt = $dbh->prepare($sql);
         if (!$stmt) {
             throw new Exception("Failed to prepare statement: " . $dbh->error);
         }
 
-        // Bind parameters dynamically
         if (!empty($params)) {
-            $bind_names[] = $types;
-            for ($i = 0; $i < count($params); $i++) {
-                $bind_names[] = &$params[$i];
-            }
-            call_user_func_array(array($stmt, 'bind_param'), $bind_names);
+            $stmt->bind_param($types, ...$params);
         }
 
-        // Execute the statement
         if (!$stmt->execute()) {
             throw new Exception("Failed to execute statement: " . $stmt->error);
         }
 
-        // If this was an insert with auto-increment, update the primary key property
-        if ($isNew && static::$autoIncrement && $dbh->insert_id) {
+        if ($isNew && static::$autoIncrement && $this->getKey() === null && $dbh->insert_id) {
             $this->setKey($dbh->insert_id);
         }
 
         $stmt->close();
+
+        if ($rehydrate) {
+            $this->rehydrateFromDatabase($dbh);
+        }
+
         return true;
     }
 
-    public function insert(mysqli $dbh): bool
+    public function insert(mysqli $dbh, bool $rehydrate = false): bool
     {
-        // We want to get properties of only the _Object class and not the effective one
         $reflection = new ReflectionClass($this)->getParentClass();
         $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
-
-        $pk = static::$primaryKey;
 
         $columns = [];
         $values = [];
         $params = [];
         $types = '';
 
-        foreach ($properties as $property) {
-            $name = $property->getName();
-            $value = $property->getValue($this);
-
-            // Skip primary key if it's null and auto-increment is enabled
-            if ($name === $pk && $value === null && static::$autoIncrement) {
+        foreach ($properties as $prop) {
+            if ($prop->isStatic()) {
                 continue;
             }
 
-            // Prepare value for database (handles enum conversion)
-            $value = $this->prepareValueForDatabase($value, $property->getType());
+            if (!$this->shouldPersistProperty($prop, true)) {
+                continue;
+            }
 
-            // Add to our arrays
-            $columns[] = "`$name`";
-            $values[] = "?";
+            $value = $this->prepareValueForDatabase($prop->getValue($this), $prop->getType());
+
+            $columns[] = '`' . $prop->getName() . '`';
+            $values[] = '?';
             $params[] = $value;
 
-            // Determine type for bind_param
-            $type = $property->getType();
+            $type = $prop->getType();
             if ($type instanceof ReflectionNamedType) {
                 $types .= match ($type->getName()) {
                     'int', 'bool' => 'i',
@@ -661,11 +674,10 @@ abstract class Model implements JsonSerializable
                     default => 's',
                 };
             } else {
-                $types .= 's'; // Default to string if no type
+                $types .= 's';
             }
         }
 
-        // Build query
         $query = sprintf(
             "INSERT INTO %s (%s) VALUES (%s)",
             static::$table,
@@ -673,25 +685,25 @@ abstract class Model implements JsonSerializable
             implode(", ", $values)
         );
 
-        // Prepare statement
         $stmt = $dbh->prepare($query);
         if ($stmt === false) {
             throw new RuntimeException("Failed to prepare statement: " . $dbh->error);
         }
 
-        // Bind parameters
         if (!empty($params)) {
             $stmt->bind_param($types, ...$params);
         }
 
-        // Execute
         $success = $stmt->execute();
 
-        if ($success) {
-            // Set the primary key if it was auto-generated
-            if (static::$autoIncrement && $dbh->insert_id) {
-                $this->setKey($dbh->insert_id);
-            }
+        if ($success && static::$autoIncrement && $this->getKey() === null && $dbh->insert_id) {
+            $this->setKey($dbh->insert_id);
+        }
+
+        $stmt->close();
+
+        if ($success && $rehydrate) {
+            $this->rehydrateFromDatabase($dbh);
         }
 
         return $success;
@@ -832,6 +844,11 @@ abstract class Model implements JsonSerializable
         return true;
     }
 
+    protected function rehydrateFromDatabase(mysqli $dbh): void
+    {
+        $this->refresh($dbh);
+    }
+
     /**
      * Check if a record exists in the database with the given conditions
      *
@@ -851,14 +868,21 @@ abstract class Model implements JsonSerializable
      */
     public function jsonSerialize(): array
     {
+        $reflection = new ReflectionClass($this)->getParentClass();
         $attributes = [];
-        foreach (array_keys(static::$attributes) as $attribute) {
-            $value = $this->$attribute;
-            // Convert enums to their backing value for JSON
+        foreach ($reflection->getProperties(ReflectionProperty::IS_PUBLIC) as $prop) {
+            if ($prop->isStatic()) {
+                continue;
+            }
+            if (!$prop->isInitialized($this)) {
+                continue;
+            }
+            $name = $prop->getName();
+            $value = $this->$name;
             if ($value instanceof \BackedEnum) {
-                $attributes[$attribute] = $value->value;
+                $attributes[$name] = $value->value;
             } else {
-                $attributes[$attribute] = $value;
+                $attributes[$name] = $value;
             }
         }
         return $attributes;
