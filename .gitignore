@@ -7,3 +7,4 @@ tests/.env
 .claude/.credentials.json
 .claude/cache/
 .claude/logs/
+.junie
