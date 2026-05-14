@@ -15,6 +15,9 @@ use ReflectionUnionType;
 use RuntimeException;
 use TypeError;
 
+/**
+ * @phpstan-consistent-constructor
+ */
 abstract class Model implements JsonSerializable
 {
     protected static string $table;
@@ -410,6 +413,11 @@ abstract class Model implements JsonSerializable
         if (!empty($conditions)) {
             $andClause = [];
             foreach ($conditions as $column => $value) {
+                if ($value === null) {
+                    $andClause[] = "`$column` IS NULL";
+                    continue;
+                }
+
                 $andClause[] = "`$column` = ?";
 
                 // Convert enums to their backing value

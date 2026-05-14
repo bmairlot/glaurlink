@@ -133,6 +133,21 @@ class ModelTest extends TestCase
         $this->assertTrue($models[1]->is_active);
     }
 
+    public function testCollectionWithNullCondition()
+    {
+        $this->dbh->query("
+            INSERT INTO test_models (name, age, is_active, score) VALUES
+            ('With Score', 25, 1, 88.5),
+            ('Null Score', 30, 1, NULL)
+        ");
+
+        $models = TestModel::collection($this->dbh, conditions: ['score' => null]);
+
+        $this->assertCount(1, $models);
+        $this->assertEquals('Null Score', $models[0]->name);
+        $this->assertNull($models[0]->score);
+    }
+
     public function testCount()
     {
         $this->dbh->query("
