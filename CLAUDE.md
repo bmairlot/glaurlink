@@ -26,7 +26,7 @@ vendor/bin/phpcs src/
 
 The ORM consists of 5 classes in `src/`:
 
-- **Model** - Base Active Record class providing CRUD operations (find, collection, count, save, insert, delete, deleteWhere). Uses PHP Reflection for type-safe property binding and prepared statements for all queries.
+- **Model** - Base Active Record class providing CRUD operations (find, collection, count, save, insert, delete, deleteWhere) and transaction control (transaction, beginTransaction, commit, rollback). Uses PHP Reflection for type-safe property binding and prepared statements for all queries.
 
 - **Collection** - Generic, type-safe collection implementing Iterator, ArrayAccess, Countable, and JsonSerializable. Query results return Collection objects, not arrays.
 
@@ -108,6 +108,8 @@ When adding or modifying a column on a model that follows this layout:
 **Enum Support**: Native PHP backed enums with automatic string↔enum conversion via tryFrom(). JSON serialization outputs enum values.
 
 **Query Building**: Table/column names are backtick-wrapped. Type strings ('i', 'd', 's') are generated dynamically. NULL conditions use "IS NULL" instead of parameterized values.
+
+**Transactions**: `Model::transaction($dbh, $callback)` wraps `$callback($dbh)` in BEGIN/COMMIT, rolls back and re-throws on any `Throwable` (non-Glaurlink throwables are wrapped in `Exception` with the original as `previous`), and returns the callback's value. Manual `beginTransaction`/`commit`/`rollback` statics exist for step-by-step control. All operate on the passed-in `$dbh` (no stored state). Transactions require InnoDB tables and do **not** nest — a nested `transaction()` call triggers MySQL's implicit commit of the outer transaction. Mirrors the pattern in `Migration::executeStatementsInTransaction`.
 
 **DB-managed columns**: `protected static array $generated = [...]` lists columns filled by the server (DEFAULT, ON UPDATE, generated). Null-valued `$generated` properties are omitted from INSERT/UPDATE SQL. Explicit non-null values are always emitted. `save($dbh, rehydrate: true)` re-reads the row after write to populate server-computed values (opt-in, no extra query by default).
 

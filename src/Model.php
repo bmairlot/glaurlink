@@ -13,6 +13,7 @@ use ReflectionProperty;
 use ReflectionType;
 use ReflectionUnionType;
 use RuntimeException;
+use Throwable;
 use TypeError;
 
 /**
@@ -96,6 +97,76 @@ abstract class Model implements JsonSerializable
     public static function isAutoIncrement(): bool
     {
         return static::$autoIncrement;
+    }
+
+    /**
+     * Run $callback inside a database transaction.
+     *
+     * Begins a transaction, invokes $callback($dbh), commits, and returns the
+     * callback's return value. If the callback (or commit) throws, the transaction
+     * is rolled back and the throwable is re-thrown — non-Glaurlink throwables are
+     * wrapped in {@see Exception}, matching Migration's behavior. Requires InnoDB
+     * tables; nesting is not supported (a nested call triggers MySQL's implicit
+     * commit of the outer transaction).
+     *
+     * @template T
+     * @param mysqli $dbh
+     * @param callable(mysqli): T $callback
+     * @return T
+     * @throws Exception
+     * @throws Throwable
+     */
+    public static function transaction(mysqli $dbh, callable $callback): mixed
+    {
+        if (!$dbh->begin_transaction()) {
+            throw new Exception("Failed to begin transaction: " . $dbh->error);
+        }
+        try {
+            $result = $callback($dbh);
+            if (!$dbh->commit()) {
+                throw new Exception("Failed to commit transaction: " . $dbh->error);
+            }
+            return $result;
+        } catch (Throwable $e) {
+            $dbh->rollback();
+            throw $e instanceof Exception ? $e : new Exception($e->getMessage(), previous: $e);
+        }
+    }
+
+    /**
+     * Begin a database transaction.
+     *
+     * @throws Exception
+     */
+    public static function beginTransaction(mysqli $dbh): void
+    {
+        if (!$dbh->begin_transaction()) {
+            throw new Exception("Failed to begin transaction: " . $dbh->error);
+        }
+    }
+
+    /**
+     * Commit the active transaction.
+     *
+     * @throws Exception
+     */
+    public static function commit(mysqli $dbh): void
+    {
+        if (!$dbh->commit()) {
+            throw new Exception("Failed to commit transaction: " . $dbh->error);
+        }
+    }
+
+    /**
+     * Roll back the active transaction.
+     *
+     * @throws Exception
+     */
+    public static function rollback(mysqli $dbh): void
+    {
+        if (!$dbh->rollback()) {
+            throw new Exception("Failed to roll back transaction: " . $dbh->error);
+        }
     }
 
     /**
